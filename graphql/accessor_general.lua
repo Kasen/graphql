@@ -461,7 +461,7 @@ local function prepare_select_internal(self, collection_name, from, filter,
     -- search for suitable index
     -- note: we redefine filter here
     local full_match, index_name, filter, index_value, pivot =
-        find_index.get_index_name(self, collection_name, from, filter, args)
+        self.index_finder:find(collection_name, from, filter, args)
     local index = index_name ~= nil and
         self.funcs.get_index(self, collection_name, index_name) or nil
     if from.collection_name ~= nil then
@@ -1012,10 +1012,8 @@ end
 ---   - extra_args
 ---   - exp_tuple_count
 function accessor_general.new(opts, funcs)
-    assert(type(opts) == 'table',
-        'opts must be a table, got ' .. type(opts))
-    assert(type(funcs) == 'table',
-        'funcs must be a table, got ' .. type(funcs))
+    check(opts, 'opts', 'table')
+    check(funcs, 'funcs', 'table')
 
     local schemas = opts.schemas
     local collections = opts.collections
@@ -1057,7 +1055,7 @@ function accessor_general.new(opts, funcs)
     local models, service_fields_defaults = compile_schemas(schemas,
         service_fields)
     validate_collections(collections, schemas, indexes)
-    local index_cache = find_index.build_index_cache(indexes, collections)
+    local index_finder = find_index.new(opts)
     local default_object_tuple_map_funcs =
         gen_default_object_tuple_map_funcs(models)
 
@@ -1077,7 +1075,7 @@ function accessor_general.new(opts, funcs)
             default_object_tuple_map_funcs.default_xflatten,
         service_fields_defaults = service_fields_defaults,
         collection_use_tomap = opts.collection_use_tomap or {},
-        index_cache = index_cache,
+        index_finder = index_finder,
         funcs = funcs,
         settings = {
             enable_mutations = enable_mutations,
