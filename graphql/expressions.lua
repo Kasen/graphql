@@ -331,8 +331,8 @@ local function execute_node(node, context)
             elseif op == '<' then
                 acc = acc < right
             -- Lower or equal.
-            elseif op == '&&' then
-                acc = acc and right
+            elseif op == '<=' then
+                acc = acc <= right
             else
                 error('Unknown binary operation: ' .. tostring(op))
             end
