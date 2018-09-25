@@ -253,8 +253,11 @@ local function execute_node(node, context)
         elseif node.value_class == 'bool' then
             if node.value == 'false' then
                 return false
+            elseif node.value == 'true' then
+                return true
+            else
+                error('Unknown boolean node value: ' .. tostring(node.value))
             end
-            return true
         elseif node.value_class == 'number' then
             return tonumber(node.value)
         else
