@@ -270,7 +270,7 @@ end
 ---          \             \
 ---           \             + --> abc ~~> index 2
 ---            \
----             + ------> abc --> efg --> hij ~~ index 3
+---             + ------> abc --> efg --> hij ~~> index 3
 ---                        \
 ---                         + ~~> index 4
 --- ```
