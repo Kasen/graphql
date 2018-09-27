@@ -13,6 +13,7 @@ package.path =
 
 local find_index = require('graphql.find_index')
 local testdata = require('test.testdata.common_testdata')
+local test_utils = require('test.test_utils')
 
 local cases = {
     {
@@ -62,7 +63,7 @@ local function run_case(test, index_finder, case)
 end
 
 for _, case in ipairs(cases) do
-    run_case(test, index_finder, case)
+    test_utils.show_trace(run_case, test, index_finder, case)
 end
 
 os.exit(test:check() == true and 0 or 1)
