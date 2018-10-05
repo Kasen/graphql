@@ -54,7 +54,7 @@
 --- `prepared_object_list` structure (in `fetch_resolve_list()`), because
 --- `prepared_object`s from one 'list' request are processed inside one
 --- iteration of the execution loop (in `invoke_resolve_list()`). This is the
---- tech debt and hopefully will be changed in the future.
+--- tech debt and hopefully will be changed in the future. XXX: done?
 ---
 --- ## Filtering over a connection
 ---
@@ -196,7 +196,7 @@ local request_batch = require('graphql.request_batch')
 -- `fetch_resolve_list` function and just use `fetch_first_same`, but requires
 -- to 'open' all list requests up to the marker to saturate
 -- `cache_only_open_set` and only then switch between cache_only / plain
--- requests (make it on the marker).
+-- requests (make it on the marker). XXX: done?
 --
 -- Maybe we also can remove separate `is_list = true` case processing over the
 -- code that can havily simplify things.
@@ -209,7 +209,6 @@ local bfs_executor = {}
 
 -- forward declarations
 local fetch_first_same
-local fetch_resolve_list
 
 -- Generate cache only requests for filters over connections {{{
 
@@ -719,31 +718,14 @@ end
 
 local function invoke_resolve_list(prepared_object_list, context, opts)
     local opts = opts or {}
-    local qcontext = opts.qcontext
-    local accessor = opts.accessor
     local is_item_cache_only = opts.is_item_cache_only or false
-    local max_batch_size = opts.max_batch_size
 
     local open_set = {}
     local cache_only_open_set = {}
 
-    local last_fetched_object_num = 0
-    for i, prepared_object in ipairs(prepared_object_list) do
-        if i > last_fetched_object_num then
-            local _, size = fetch_resolve_list(prepared_object_list,
-                {accessor = accessor, qcontext = qcontext,
-                max_batch_size = max_batch_size, start_from = i,
-                force_caching = is_item_cache_only})
-            last_fetched_object_num = last_fetched_object_num + size
-        end
-
-        local child = invoke_resolve(prepared_object, context,
-            {qcontext = qcontext, is_item_cache_only = is_item_cache_only})
-        local child_open_set = child.open_set
-        local child_cache_only_open_set = child.cache_only_open_set
-
-        utils.expand_list(open_set, child_open_set)
-        utils.expand_list(cache_only_open_set, child_cache_only_open_set)
+    local dest = is_item_cache_only and cache_only_open_set or open_set
+    for _, prepared_object in ipairs(prepared_object_list) do
+        table.insert(dest, {prepared_object = prepared_object})
     end
 
     return {
@@ -773,59 +755,6 @@ fetch_first_same = function(open_set, opts)
         if i > max_batch_size then break end
         if item.prepared_object == nil then break end
         local prepared_object = item.prepared_object
-
-        for field_name, field_info in pairs(prepared_object.fields_info) do
-            local prepared_resolve = field_info.prepared_resolve
-            if prepared_resolve.is_calculated then
-                size = i
-                goto ret
-            end
-            local batch = request_batch.from_prepared_resolve(prepared_resolve)
-
-            if i == 1 then
-                assert(batches[field_name] == nil,
-                    ('internal error: %s: field names "%s" clash'):format(
-                    func_name, field_name))
-                batches[field_name] = batch
-                size = i
-            else
-                local ok = batches[field_name] ~= nil and
-                    batches[field_name]:compare_bins(batch)
-                if not ok then goto ret end
-                table.insert(batches[field_name].keys, batch.keys[1])
-                size = i
-            end
-        end
-    end
-
-    ::ret::
-
-    -- don't flood cache with single-key (non-batch) select results
-    if not force_caching and size <= 1 then
-        return nil, size
-    end
-
-    local fetch_id = accessor:cache_fetch(batches, qcontext)
-    return fetch_id, size
-end
-
-fetch_resolve_list = function(prepared_object_list, opts)
-    local func_name = 'bfs_executor.fetch_resolve_list'
-    local opts = opts or {}
-    local accessor = opts.accessor
-    local qcontext = opts.qcontext
-    local max_batch_size = opts.max_batch_size
-    local start_from = opts.start_from or 1
-    local force_caching = opts.force_caching or false
-
-    if not accessor:cache_is_supported() then return nil, 0 end
-
-    local size = 0
-
-    local batches = {}
-    for i = 1, #prepared_object_list - start_from + 1 do
-        if i > max_batch_size then break end
-        local prepared_object = prepared_object_list[i + start_from - 1]
 
         for field_name, field_info in pairs(prepared_object.fields_info) do
             local prepared_resolve = field_info.prepared_resolve
@@ -1085,9 +1014,7 @@ function bfs_executor.execute(schema, query_ast, variables, operation_name, opts
             expand_open_set(open_set, child_open_set, {accessor = accessor})
         elseif item.prepared_object_list ~= nil then
             local child = invoke_resolve_list(item.prepared_object_list,
-                context, {qcontext = qcontext, accessor = accessor,
-                is_item_cache_only = is_item_cache_only,
-                max_batch_size = max_batch_size})
+                context, {is_item_cache_only = is_item_cache_only})
             local child_cache_only_open_set = child.cache_only_open_set
             local child_open_set = child.open_set
             expand_open_set(cache_only_open_set, child_cache_only_open_set,
