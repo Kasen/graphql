@@ -273,36 +273,46 @@ function multihead_conn_testdata.fill_test_data(shard)
         { 1827767717, 'hero_id_1', 'human', 'credit'})
     shard.hero_collection:replace(
         { 1827767717, 'hero_id_2', 'starship', 'dublon'})
+    shard.hero_collection:replace(
+        { 1827767717, 'hero_id_3', 'human', 'credit'})
+    shard.hero_collection:replace(
+        { 1827767717, 'hero_id_4', 'starship', 'dublon'})
 
     shard.human_collection:replace(
         { 1827767717, 'hero_id_1', 'Luke', "EMPR"})
+    shard.human_collection:replace(
+        { 1827767717, 'hero_id_3', 'Luke_2', "EMPR"})
 
     shard.starship_collection:replace(
         { 1827767717, 'hero_id_2', 'Falcon-42', "NEW"})
+    shard.starship_collection:replace(
+        { 1827767717, 'hero_id_4', 'Falcon-42_2', "NEW"})
 
     shard.credit_account_collection:replace(
-        { 1827767717, 'credit_account_id_1', 'hero_id_1'}
-    )
-
+        { 1827767717, 'credit_account_id_1', 'hero_id_1'})
     shard.credit_account_collection:replace(
-        { 1827767717, 'credit_account_id_2', 'hero_id_1'}
-    )
-
+        { 1827767717, 'credit_account_id_2', 'hero_id_1'})
     shard.credit_account_collection:replace(
-        { 1827767717, 'credit_account_id_3', 'hero_id_1'}
-    )
+        { 1827767717, 'credit_account_id_3', 'hero_id_1'})
+    shard.credit_account_collection:replace(
+        { 1827767717, 'credit_account_id_4', 'hero_id_3'})
+    shard.credit_account_collection:replace(
+        { 1827767717, 'credit_account_id_5', 'hero_id_3'})
+    shard.credit_account_collection:replace(
+        { 1827767717, 'credit_account_id_6', 'hero_id_3'})
 
     shard.dublon_account_collection:replace(
-        { 1827767717, 'dublon_account_id_1', 'hero_id_2'}
-    )
-
+        { 1827767717, 'dublon_account_id_1', 'hero_id_2'})
     shard.dublon_account_collection:replace(
-        { 1827767717, 'dublon_account_id_2', 'hero_id_2'}
-    )
-
+        { 1827767717, 'dublon_account_id_2', 'hero_id_2'})
     shard.dublon_account_collection:replace(
-        { 1827767717, 'dublon_account_id_3', 'hero_id_2'}
-    )
+        { 1827767717, 'dublon_account_id_3', 'hero_id_2'})
+    shard.dublon_account_collection:replace(
+        { 1827767717, 'dublon_account_id_4', 'hero_id_4'})
+    shard.dublon_account_collection:replace(
+        { 1827767717, 'dublon_account_id_5', 'hero_id_4'})
+    shard.dublon_account_collection:replace(
+        { 1827767717, 'dublon_account_id_6', 'hero_id_4'})
 end
 
 function multihead_conn_testdata.drop_spaces()
@@ -447,6 +457,34 @@ function multihead_conn_testdata.run_queries(gql_wrapper)
                   hero_id: hero_id_2
                 - account_id: dublon_account_id_3
                   hero_id: hero_id_2
+        - hero_id: hero_id_3
+          hero_type: human
+          hero_connection:
+            human_collection:
+                name: Luke_2
+          banking_type: credit
+          hero_banking_connection:
+            credit_account_collection:
+                - account_id: credit_account_id_4
+                  hero_id: hero_id_3
+                - account_id: credit_account_id_5
+                  hero_id: hero_id_3
+                - account_id: credit_account_id_6
+                  hero_id: hero_id_3
+        - hero_id: hero_id_4
+          hero_type: starship
+          hero_connection:
+            starship_collection:
+                model: Falcon-42_2
+          banking_type: dublon
+          hero_banking_connection:
+            dublon_account_collection:
+                - account_id: dublon_account_id_4
+                  hero_id: hero_id_4
+                - account_id: dublon_account_id_5
+                  hero_id: hero_id_4
+                - account_id: dublon_account_id_6
+                  hero_id: hero_id_4
     ]]):strip())
     test:is_deeply(result_1_3.data, exp_result_1_3, '1_3')
 
