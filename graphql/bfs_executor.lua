@@ -553,6 +553,16 @@ local function filter_object(object, object_type, selections, context, opts)
     local cache_only_fields_info = {}
     local fields_info = {}
 
+    -- no variant / empty variant selection set; hack to trigger special
+    -- construction case, see invoke_resolve()
+    if object_type.isMultiheadWrapper and
+            next(selections_per_fields) == nil and
+            -- XXX: it is better to provide the connection type as an object
+            -- type field
+            not object_type.name:startswith('box_array_') then
+        return {insert_into = ''}
+    end
+
     for field_name, selection in pairs(selections_per_fields) do
         local field_type = core_introspection.fieldMap[field_name] or
             object_type.fields[field_name]
@@ -771,9 +781,15 @@ local function invoke_resolve(prepared_object, context, opts)
                 if not is_item_cache_only then
                     local filtered_object = prepared_object.filtered_object
                     if insert_into ~= nil then
-                        filtered_object[field_name] = {}
-                        filtered_object[field_name][insert_into] =
-                            child_prepared_object.filtered_object
+                        -- return unwrapped null for a null union branch (as
+                        -- avro-schema expects)
+                        local child_fo = child_prepared_object.filtered_object
+                        local child_fi = child_prepared_object.fields_info
+                        if (child_fo ~= nil and next(child_fo) ~= nil) or
+                                (child_fi ~= nil and next(child_fi) ~= nil) then
+                            filtered_object[field_name] = {}
+                            filtered_object[field_name][insert_into] = child_fo
+                        end
                     else
                         filtered_object[field_name] =
                             child_prepared_object.filtered_object

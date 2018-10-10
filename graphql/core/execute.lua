@@ -70,7 +70,12 @@ local function completeValue(fieldType, result, subSelections, context, opts)
       objectType = objectType.ofType
     end
 
-    return evaluateSelections(objectType, result, subSelections, context)
+    -- return unwrapped null for a null union branch (as avro-schema expects)
+    local fields = evaluateSelections(objectType, result, subSelections, context)
+    return next(fields) and fields or (
+      -- XXX: we should not performs such guessing on an object name
+      objectType.name:startswith('box_array_') and
+      context.schema.__emptyList or nil)
   end
 
   error('Unknown type "' .. fieldTypeName .. '" for field "' .. fieldName .. '"')

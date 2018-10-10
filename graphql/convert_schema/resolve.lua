@@ -300,6 +300,9 @@ function resolve.gen_resolve_function_multihead(collection_name, connection,
             result.invoke = function(prepared_resolve)
                 local result = invoke_resolve(prepared_resolve)
                 -- see comment below
+                if result == nil then
+                    return box.NULL, destination_type
+                end
                 return {[box_field_name] = result}, destination_type
             end
             return result
@@ -307,6 +310,11 @@ function resolve.gen_resolve_function_multihead(collection_name, connection,
             local result = resolve.gen_resolve_function(collection_name,
                 quazi_connection, destination_type, {}, accessor, gen_opts)(
                 parent, {}, info, opts)
+            -- Handle enabled disable_dangling_check and return unwrapped null
+            -- for a null union branch (as avro-schema expects).
+            if result == nil then
+                return box.NULL, destination_type
+            end
             -- This 'wrapping' is needed because we use 'select' on 'collection'
             -- GraphQL type and the result of the resolve function must be in
             -- {'collection_name': {result}} format to be avro-valid.
