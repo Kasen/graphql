@@ -5,12 +5,14 @@ local yaml = require('yaml')
 local utils = require('graphql.utils')
 local shard = utils.optional_require('shard')
 local accessor_shard_helpers = require('graphql.accessor_shard_helpers')
+local merger = utils.optional_require('merger')
 
 local accessor_shard_index_info = {}
 
 -- XXX: accessor_shard_index_info.new()
 
 local index_info_cache = {}
+local merger_cache = {}
 
 --- Determines whether certain fields of two tables are the same.
 ---
@@ -40,7 +42,7 @@ local function compare_table_by_fields(t1, t2, fields)
     return true
 end
 
---- Get index object from net_box under the shard module.
+--- Get an index object from net_box under the shard module.
 ---
 --- The function performs some optimistic consistency checks and raises an
 --- error in the case. It caches results and returns a result from the cache
@@ -55,7 +57,7 @@ end
 ---
 --- @return index object
 function accessor_shard_index_info.get_index_info(collection_name, index_name)
-    local func_name = 'accessor_shard.get_index_info'
+    local func_name = 'accessor_shard_index_info.get_index_info'
     local index_info
 
     -- get from the cache if exists
@@ -93,6 +95,44 @@ function accessor_shard_index_info.get_index_info(collection_name, index_name)
     index_info_cache[collection_name][index_name] = index_info
 
     return index_info
+end
+
+--- Create or get cached merger for given collection and index.
+---
+--- @tparam string collection_name
+---
+--- @tparam string index_name
+---
+--- @treturn cdata `merger_inst`
+function accessor_shard_index_info.get_merger(collection_name, index_name)
+    local func_name = 'accessor_shard_index_info.get_merger'
+
+    if merger == nil then
+        error(('internal error: %s: merger is requested, but is not ' ..
+            'supported by the current tarantool version'):format(func_name))
+    end
+
+    local merger_inst
+
+    -- get from the cache if exists
+    if merger_cache[collection_name] ~= nil then
+        merger_inst = merger_cache[collection_name][index_name]
+        if merger_inst ~= nil then
+            return merger_inst
+        end
+    end
+
+    local index_info = accessor_shard_index_info.get_index_info(collection_name,
+        index_name)
+    merger_inst = merger.new(index_info.parts)
+
+    -- write to the cache
+    if merger_cache[collection_name] == nil then
+        merger_cache[collection_name] = {}
+    end
+    merger_cache[collection_name][index_name] = merger_inst
+
+    return merger_inst
 end
 
 return accessor_shard_index_info

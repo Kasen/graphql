@@ -3,14 +3,15 @@ local utils = require('graphql.utils')
 local shard = utils.optional_require('shard')
 local request_batch = require('graphql.request_batch')
 local accessor_shard_index_info = require('graphql.accessor_shard_index_info')
+local buffer = require('buffer')
+local merger = utils.optional_require('merger')
 
 local check = utils.check
 
 local accessor_shard_cache = {}
 
-local function net_box_call_wrapper(conn, func_name, call_args)
-    local ok, result = pcall(conn.call, conn, func_name, call_args,
-        {is_async = true})
+local function net_box_call_wrapper(conn, func_name, call_args, opts)
+    local ok, result = pcall(conn.call, conn, func_name, call_args, opts)
 
     if not ok then
         return nil, {
@@ -57,6 +58,7 @@ local function cache_fetch_batch(self, batch, fetch_id, stat)
 
     -- perform requests
     local results_per_replica_set = {}
+    local buffers = {}
     for i, replica_set in ipairs(shard.shards) do
         local first_err
 
@@ -71,15 +73,21 @@ local function cache_fetch_batch(self, batch, fetch_id, stat)
                 batch.keys,
                 batch.iterator_opts
             }
+            -- write into a buffer when the merger module is available
+            local buf = merger and buffer.ibuf() or nil
             local node_results, node_err = net_box_call_wrapper(conn,
-                'batch_select', call_args)
+                'batch_select', call_args, {is_async = true, buffer = buf})
 
             if node_results == nil then
                 if first_err == nil then
                     first_err = node_err
                 end
             else
+                -- save results
                 results_per_replica_set[i] = node_results
+                if merger ~= nil then
+                    buffers[i] = buf
+                end
                 break -- go to the next replica_set
             end
         end
@@ -90,20 +98,34 @@ local function cache_fetch_batch(self, batch, fetch_id, stat)
         end
     end
 
-    -- merge results without sorting: transform
-    -- results_per_replica_set[replica_set_num][request_num] 2d-array into
-    -- results[request_num] 1d-array
     local results = {}
-    for _, node_results in ipairs(results_per_replica_set) do
-        if is_future(node_results) then
-            node_results = node_results:wait_result()[1]
+    if merger ~= nil then
+        -- wait for results
+        for i, node_results in ipairs(results_per_replica_set) do
+            if is_future(node_results) then
+                node_results:wait_result()
+            end
         end
-        -- we cannot use C merger for now, because buffers will contain
-        -- list of list of tuples instead of list of tuples
-        for j, node_result in ipairs(node_results) do
-            results[j] = results[j] or {}
-            for _, tuple in ipairs(node_result) do
-                table.insert(results[j], tuple)
+        -- merge with sorting (it assumes the same sorting within each buffer)
+        local merger_inst = accessor_shard_index_info.get_merger(
+            batch.collection_name, 0)
+        for i = 1, #ids do
+            results[i] = merger_inst:select(buffers,
+                {decode = i == 1 and 'chain' or 'raw'})
+        end
+    else
+        -- merge results without sorting: transform
+        -- results_per_replica_set[replica_set_num][request_num] 2d-array into
+        -- results[request_num] 1d-array
+        for _, node_results in ipairs(results_per_replica_set) do
+            if is_future(node_results) then
+                node_results = node_results:wait_result()[1]
+            end
+            for j, node_result in ipairs(node_results) do
+                results[j] = results[j] or {}
+                for _, tuple in ipairs(node_result) do
+                    table.insert(results[j], tuple)
+                end
             end
         end
     end
@@ -121,20 +143,25 @@ local function cache_fetch_batch(self, batch, fetch_id, stat)
         end
     end
 
-    -- sort by a primary key
-    local primary_index_info = accessor_shard_index_info.get_index_info(
-        batch.collection_name, 0)
+    -- count fetched tuples
     for _, result in ipairs(results) do
-        -- count fetched tuples
         stat.fetched_tuples_cnt = stat.fetched_tuples_cnt + #result
-        table.sort(result, function(a, b)
-            for i, part in pairs(primary_index_info.parts) do
-                if a[part.fieldno] ~= b[part.fieldno] then
-                    return a[part.fieldno] < b[part.fieldno]
+    end
+
+    if merger == nil then
+        -- sort by a primary key
+        local primary_index_info = accessor_shard_index_info.get_index_info(
+            batch.collection_name, 0)
+        for _, result in ipairs(results) do
+            table.sort(result, function(a, b)
+                for i, part in pairs(primary_index_info.parts) do
+                    if a[part.fieldno] ~= b[part.fieldno] then
+                        return a[part.fieldno] < b[part.fieldno]
+                    end
                 end
-            end
-            return false
-        end)
+                return false
+            end)
+        end
     end
 
     assert(#results == #batch.keys,
