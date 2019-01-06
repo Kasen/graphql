@@ -1476,6 +1476,13 @@ local function init_qcontext(accessor, qcontext)
     qcontext.initialized = true
 end
 
+local function tuple_raw(tuple)
+    local data_offset = (ffi.cast('const uint16_t *', tuple) + 4)[0]
+    local data_size = (ffi.cast('const uint32_t *', tuple) + 1)[0]
+    local data = ffi.cast('const char *', tuple) + data_offset
+    return ffi.string(data, data_size)
+end
+
 --- Create default unflatten/flatten/xflatten functions, that can be called
 --- from funcs.unflatten_tuple/funcs.flatten_object/funcs.xflatten when an
 --- additional pre/postprocessing is not needed.
@@ -1493,7 +1500,7 @@ local function gen_default_object_tuple_map_funcs(models)
             local opts = opts or {}
             check(opts, 'opts', 'table')
 
-            local ok, obj = model.unflatten(tuple)
+            local ok, obj = model.unflatten(tuple_raw(tuple))
             assert(ok, ('cannot unflat tuple of schema "%s": %s'):format(
                 schema_name, tostring(obj)))
             return obj
