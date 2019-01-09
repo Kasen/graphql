@@ -2,8 +2,9 @@
 
 local json = require('json')
 local buffer = require('buffer')
+local msgpack = require('msgpack')
+local net_box = require('net.box')
 local utils = require('graphql.utils')
-local ibuf_helpers = require('graphql.ibuf_helpers')
 local merger = utils.optional_require('merger')
 local shard = utils.optional_require('shard')
 
@@ -70,11 +71,12 @@ local function mr_call_base(gen_call_args, opts)
     error('not supported yet') -- XXX
 end
 
-local function decode_metainfo(buffer)
-    if ibuf_helpers.ibuf_decode_call_header(buffer) ~= 2 then
-        error('expected 2 retvals')
-    end
-    return ibuf_helpers.ibuf_decode_next(buffer)
+local function decode_metainfo(buf)
+    buf.rpos = assert(net_box.check_iproto_data(buf.rpos, buf.wpos - buf.rpos))
+    buf.rpos = assert(msgpack.check_array(buf.rpos, buf.wpos - buf.rpos, 2))
+    local res
+    res, buf.rpos = msgpack.decode(buf.rpos, buf.wpos - buf.rpos)
+    return res
 end
 
 --- Wait for data and request for the next data.
@@ -88,7 +90,7 @@ local function gen_fetch_source(replicasets, futures, gen_call_args)
 
         -- the source was entirely drained
         if future == nil then
-            ibuf_helpers.ibuf_ensure_end(buf)
+            assert(buf.rpos == buf.wpos, 'expected buffer end')
             return
         end
 
@@ -126,7 +128,8 @@ local function mr_call_merger(gen_call_args)
     -- the require statement is here to avoid circular dependencies
     local accessor_shard_index_info =
         require('graphql.accessor_shard_index_info')
-    local merger_inst = accessor_shard_index_info.get_merger(collection_name, 0)
+    local merger_context = accessor_shard_index_info.get_merger_context(
+        collection_name, 0)
 
     -- request for data
     for i, replica_set in ipairs(replicasets) do
@@ -137,10 +140,7 @@ local function mr_call_merger(gen_call_args)
 
     local fetch_source = gen_fetch_source(replicasets, futures, gen_call_args)
 
-    return merger_inst:pairs(buffers, {
-        decode = 'raw',
-        fetch_source = fetch_source,
-    })
+    return merger.pairs(merger_context, buffers, {fetch_source = fetch_source})
 end
 
 function accessor_shard_helpers.mr_call(gen_call_args, opts)
