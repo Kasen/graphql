@@ -5,6 +5,8 @@ local request_batch = require('graphql.request_batch')
 local accessor_shard_index_info = require('graphql.accessor_shard_index_info')
 local buffer = require('buffer')
 local merger = utils.optional_require('merger')
+local msgpack = require('msgpack')
+local net_box = require('net.box')
 
 local check = utils.check
 
@@ -105,13 +107,20 @@ local function cache_fetch_batch(self, batch, fetch_id, stat)
             if is_future(node_results) then
                 node_results:wait_result()
             end
+            -- skip iproto_data and arrays headers
+            local buf = buffers[i]
+            buf.rpos = assert(net_box.check_iproto_data(buf.rpos,
+                buf.wpos - buf.rpos))
+            buf.rpos = assert(msgpack.check_array(buf.rpos,
+                buf.wpos - buf.rpos, 1))
+            buf.rpos = assert(msgpack.check_array(buf.rpos,
+                buf.wpos - buf.rpos))
         end
         -- merge with sorting (it assumes the same sorting within each buffer)
-        local merger_inst = accessor_shard_index_info.get_merger(
+        local merger_context = accessor_shard_index_info.get_merger_context(
             batch.collection_name, 0)
         for i = 1, #ids do
-            results[i] = merger_inst:select(buffers,
-                {decode = i == 1 and 'chain' or 'raw'})
+            results[i] = merger.select(merger_context, buffers)
         end
     else
         -- merge results without sorting: transform
