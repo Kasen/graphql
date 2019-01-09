@@ -12,7 +12,7 @@ local accessor_shard_index_info = {}
 -- XXX: accessor_shard_index_info.new()
 
 local index_info_cache = {}
-local merger_cache = {}
+local merger_context_cache = {}
 
 --- Determines whether certain fields of two tables are the same.
 ---
@@ -97,42 +97,46 @@ function accessor_shard_index_info.get_index_info(collection_name, index_name)
     return index_info
 end
 
---- Create or get cached merger for given collection and index.
+--- Create or get cached merger context for given collection and index.
+---
+--- XXX: Implement some cache clean up strategy and a way to manual cache
+--- purge.
 ---
 --- @tparam string collection_name
 ---
 --- @tparam string index_name
 ---
---- @treturn cdata `merger_inst`
-function accessor_shard_index_info.get_merger(collection_name, index_name)
-    local func_name = 'accessor_shard_index_info.get_merger'
+--- @treturn cdata `merger_context`
+function accessor_shard_index_info.get_merger_context(collection_name,
+        index_name)
+    local func_name = 'accessor_shard_index_info.get_merger_context'
 
     if merger == nil then
-        error(('internal error: %s: merger is requested, but is not ' ..
+        error(('internal error: %s: merger_context is requested, but is not ' ..
             'supported by the current tarantool version'):format(func_name))
     end
 
-    local merger_inst
+    local merger_context
 
     -- get from the cache if exists
-    if merger_cache[collection_name] ~= nil then
-        merger_inst = merger_cache[collection_name][index_name]
-        if merger_inst ~= nil then
-            return merger_inst
+    if merger_context_cache[collection_name] ~= nil then
+        merger_context = merger_context_cache[collection_name][index_name]
+        if merger_context ~= nil then
+            return merger_context
         end
     end
 
     local index_info = accessor_shard_index_info.get_index_info(collection_name,
         index_name)
-    merger_inst = merger.new(index_info.parts)
+    merger_context = merger.context.new(index_info.parts)
 
     -- write to the cache
-    if merger_cache[collection_name] == nil then
-        merger_cache[collection_name] = {}
+    if merger_context_cache[collection_name] == nil then
+        merger_context_cache[collection_name] = {}
     end
-    merger_cache[collection_name][index_name] = merger_inst
+    merger_context_cache[collection_name][index_name] = merger_context
 
-    return merger_inst
+    return merger_context
 end
 
 return accessor_shard_index_info
